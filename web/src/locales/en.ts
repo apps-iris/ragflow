@@ -73,6 +73,7 @@ export default {
       },
       selected: 'Selected',
       seeAll: 'See all',
+      bulkOperate: 'Bulk operate',
     },
     login: {
       loginTitle: 'Sign in to your account',
@@ -514,10 +515,10 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       buildItFromScratch: 'Build it from scratch',
       dataFlow: 'Pipeline',
       parseType: 'Parse type',
-      manualSetup: 'Choose pipeline',
+      manualSetup: 'Pipeline',
       builtIn: 'Built-in',
       titleDescription:
-        'Update your memory configuration here, particularly the LLM and prompts.',
+        'Update your dataset configuration here, particularly the LLM and prompts.',
       name: 'Dataset name',
       photo: 'Dataset photo',
       photoTip: 'You can upload an image up to 4 MB.',
@@ -583,8 +584,9 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       naive: `<p>Supported file formats are <b>MD, MDX, DOCX, XLSX, XLS (Excel 97-2003), PPTX, PDF, TXT, JPEG, JPG, PNG, TIF, GIF, CSV, JSON, EML, HTML</b>.</p>
       <p>This method chunks files using a 'naive' method: </p>
       <p>
+      <ul>
       <li>Use vision detection model to split the texts into smaller segments.</li>
-      <li>Then, combine adjacent segments until the token count exceeds the threshold specified by 'Chunk token number for text', at which point a chunk is created.</li></p>`,
+      <li>Then, combine adjacent segments until the token count exceeds the threshold specified by 'Chunk token number for text', at which point a chunk is created.</li></ul></p>`,
       paper: `<p>Only <b>PDF</b> file is supported.</p><p>
       Papers will be split by section, such as <i>abstract, 1.1, 1.2</i>. </p><p>
       This approach enables the LLM to summarize the paper more effectively and to provide more comprehensive, understandable responses.
@@ -596,6 +598,7 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
       <p>
       This chunking method supports <b>XLSX</b> and <b>CSV/TXT</b> file formats.
     </p>
+    <ul>
     <li>
       If a file is in <b>XLSX</b> or <b>XLS (Excel 97-2003)</b> format, it should contain two columns without headers: one for questions and the other for answers, with the question column preceding the answer column. Multiple sheets are
       acceptable, provided the columns are properly structured.
@@ -603,6 +606,7 @@ Example: A 1 KB message with 1024-dim embedding uses ~9 KB. The 5 MB default lim
     <li>
       If a file is in <b>CSV/TXT</b> format, it must be UTF-8 encoded with TAB as the delimiter to separate questions and answers.
     </li>
+    </ul>
     <p>
       <i>
         Lines of texts that fail to follow the above rules will be ignored, and
@@ -725,6 +729,8 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
         table: 'Table',
         text: 'Text',
       },
+      size: 'Size',
+      uploadedTime: 'Uploaded time',
       chunk: 'Chunk',
       bulk: 'Bulk',
       selectAll: 'Select all',
@@ -1033,6 +1039,8 @@ Example: Virtual Hosted Style`,
         'Connect GitHub to sync pull requests and issues for retrieval.',
       airtableDescription:
         'Connect to Airtable and synchronize files from a specified table within a designated workspace.',
+      dingtalkAITableDescription:
+        'Connect to Dingtalk AI Table and synchronize records from a specified table.',
       gitlabDescription:
         'Connect GitLab to sync repositories, issues, merge requests, and related documentation.',
       asanaDescription:
@@ -1446,6 +1454,8 @@ Example: Virtual Hosted Style`,
       hint: 'hint',
     },
     fileManager: {
+      uploadFolderTitle: 'Upload folder',
+      folder: 'Folder',
       files: 'Files',
       name: 'Name',
       uploadDate: 'Upload date',
@@ -1495,6 +1505,7 @@ Example: Virtual Hosted Style`,
       other: 'Other',
       ingestionPipeline: 'Ingestion pipeline',
       agents: 'Agents',
+      publishedAt: 'Published at',
       days: 'Days',
       beginInput: 'Begin input',
       ref: 'Variable',
@@ -1576,6 +1587,7 @@ Example: Virtual Hosted Style`,
       citeTip: 'citeTip',
       name: 'Name',
       nameMessage: 'Please input name',
+      lastSavedAt: 'Last saved at',
       description: 'Description',
       descriptionMessage: 'This is an agent for a specific task.',
       examples: 'Examples',
@@ -1832,6 +1844,7 @@ Example: Virtual Hosted Style`,
       dbType: 'Database type',
       database: 'Database',
       username: 'Username',
+      userId: 'User id',
       host: 'Host',
       port: 'Port',
       password: 'Password',
@@ -2180,6 +2193,13 @@ This process aggregates variables from multiple branches into a single variable 
         'Write your SQL query here. You can use variables, raw SQL, or mix both using variable syntax.',
       frameworkPrompts: 'Framework',
       release: 'Publish',
+      production: 'Production',
+      productionTooltip:
+        'This version is published to production. Access it via the API or the embedded page.',
+      confirmPublish: 'Confirm Publish',
+      publishDescription: 'You are about to publish this data pipeline.',
+      linkedDataset: 'Linked dataset',
+      lastPublished: 'Last published',
       createFromBlank: 'Create from blank',
       createFromTemplate: 'Create from template',
       importJsonFile: 'Import JSON file',
@@ -2458,6 +2478,7 @@ Important structured information may include: names, dates, locations, events, k
       vietnamese: 'Vietnamese',
       russian: 'Russian',
       bulgarian: 'Bulgarian',
+      arabic: 'Arabic',
     },
     pagination: {
       total: 'Total {{total}}',
@@ -2554,6 +2575,7 @@ Important structured information may include: names, dates, locations, events, k
       import: 'Import',
       description: 'Description',
       noDescription: 'No description',
+      none: 'None',
 
       resourceType: {
         dataset: 'Dataset',
