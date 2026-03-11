@@ -26,6 +26,7 @@ from api.db.db_models import LLM
 from api.db.services.common_service import CommonService
 from api.db.services.tenant_llm_service import LLM4Tenant, TenantLLMService
 from common.constants import LLMType
+from common.prompt_logger import log_llm_prompt
 from common.token_utils import num_tokens_from_string
 
 
@@ -367,6 +368,14 @@ class LLMBundle(LLM4Tenant):
         return queue
 
     async def async_chat(self, system: str, history: list, gen_conf: dict = {}, **kwargs):
+        log_llm_prompt(
+            model_name=self.model_config.get("llm_name", ""),
+            llm_factory=self.model_config.get("llm_factory", ""),
+            system=system,
+            history=history,
+            gen_conf=gen_conf,
+            call_type="chat",
+        )
         if self.is_tools and getattr(self.mdl, "is_tools", False) and hasattr(self.mdl, "async_chat_with_tools"):
             base_fn = self.mdl.async_chat_with_tools
         elif hasattr(self.mdl, "async_chat"):
@@ -403,6 +412,14 @@ class LLMBundle(LLM4Tenant):
         return txt
 
     async def async_chat_streamly(self, system: str, history: list, gen_conf: dict = {}, **kwargs):
+        log_llm_prompt(
+            model_name=self.model_config.get("llm_name", ""),
+            llm_factory=self.model_config.get("llm_factory", ""),
+            system=system,
+            history=history,
+            gen_conf=gen_conf,
+            call_type="chat_stream",
+        )
         total_tokens = 0
         ans = ""
         if self.is_tools and getattr(self.mdl, "is_tools", False) and hasattr(self.mdl, "async_chat_streamly_with_tools"):
@@ -446,6 +463,14 @@ class LLMBundle(LLM4Tenant):
             return
 
     async def async_chat_streamly_delta(self, system: str, history: list, gen_conf: dict = {}, **kwargs):
+        log_llm_prompt(
+            model_name=self.model_config.get("llm_name", ""),
+            llm_factory=self.model_config.get("llm_factory", ""),
+            system=system,
+            history=history,
+            gen_conf=gen_conf,
+            call_type="chat_stream_delta",
+        )
         total_tokens = 0
         ans = ""
         if self.is_tools and getattr(self.mdl, "is_tools", False) and hasattr(self.mdl, "async_chat_streamly_with_tools"):
