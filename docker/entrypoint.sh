@@ -213,6 +213,30 @@ function ensure_docling() {
 }
 
 function ensure_db_init() {
+  echo "Waiting for MySQL to be reachable..."
+  local retries=30
+  local i=0
+  while [ "$i" -lt "$retries" ]; do
+    if "$PY" -c "
+import socket, os, sys
+host = os.environ.get('MYSQL_HOST', 'mysql')
+port = int(os.environ.get('MYSQL_PORT', '3306'))
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+s.settimeout(3)
+try:
+    s.connect((host, port))
+    s.close()
+    sys.exit(0)
+except Exception:
+    sys.exit(1)
+" 2>/dev/null; then
+      break
+    fi
+    i=$((i + 1))
+    echo "MySQL not reachable yet (attempt $i/$retries), retrying in 2s..."
+    sleep 2
+  done
+
   echo "Initializing database tables..."
   "$PY" -c "from api.db.db_models import init_database_tables as init_web_db; init_web_db()"
 }

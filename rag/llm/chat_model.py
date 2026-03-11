@@ -58,6 +58,8 @@ class ReActMode(StrEnum):
 ERROR_PREFIX = "**ERROR**"
 LENGTH_NOTIFICATION_CN = "······\n由于大模型的上下文窗口大小限制，回答已经被大模型截断。"
 LENGTH_NOTIFICATION_EN = "...\nThe answer is truncated by your chosen LLM due to its limitation on context length."
+REPETITION_NOTIFICATION_CN = "\n[检测到重复输出，已自动停止生成。]"
+REPETITION_NOTIFICATION_EN = "\n[Repetitive output detected. Generation stopped automatically.]"
 
 
 class Base(ABC):
@@ -1213,7 +1215,6 @@ class LiteLLMBase(ABC):
             gen_conf["presence_penalty"] = 0.0
             gen_conf["frequency_penalty"] = 0.0
 
-        gen_conf.pop("max_tokens", None)
         return gen_conf
 
     async def async_chat(self, system, history, gen_conf, **kwargs):
@@ -1250,6 +1251,16 @@ class LiteLLMBase(ABC):
 
         assert False, "Shouldn't be here."
 
+    @staticmethod
+    def _is_repetitive(text, check_sizes=(48, 96, 192)):
+        """Detect if the tail of accumulated text contains a repeating pattern."""
+        for size in check_sizes:
+            if len(text) >= size * 3:
+                chunk = text[-size:]
+                if text[-size * 2 : -size] == chunk and text[-size * 3 : -size * 2] == chunk:
+                    return True
+        return False
+
     async def async_chat_streamly(self, system, history, gen_conf, **kwargs):
         if system and history and history[0].get("role") != "system":
             history.insert(0, {"role": "system", "content": system})
@@ -1271,6 +1282,7 @@ class LiteLLMBase(ABC):
                     timeout=self.timeout,
                 )
 
+                accumulated = ""
                 async for resp in stream:
                     if not hasattr(resp, "choices") or not resp.choices:
                         continue
@@ -1288,6 +1300,15 @@ class LiteLLMBase(ABC):
                     else:
                         reasoning_start = False
                         ans = delta.content
+
+                    accumulated += ans
+                    if self._is_repetitive(accumulated):
+                        logging.warning("Repetitive output detected, stopping stream for model %s", self.model_name)
+                        if is_chinese(accumulated):
+                            yield REPETITION_NOTIFICATION_CN
+                        else:
+                            yield REPETITION_NOTIFICATION_EN
+                        break
 
                     tol = total_token_count_from_response(resp)
                     if not tol:
