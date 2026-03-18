@@ -24,7 +24,8 @@ from api.db.services.tenant_llm_service import LLMFactoriesService, TenantLLMSer
 from api.db.services.llm_service import LLMService
 from api.utils.api_utils import get_allowed_llm_factories, get_data_error_result, get_json_result, get_request_json, server_error_response, validate_request
 from common.constants import StatusEnum, LLMType
-from api.db.db_models import TenantLLM
+from api.db.db_models import Knowledgebase, TenantLLM
+from api.db.services.knowledgebase_service import KnowledgebaseService
 from rag.utils.base64_image import test_image
 from rag.llm import EmbeddingModel, ChatModel, RerankModel, CvModel, TTSModel, OcrModel, Seq2txtModel
 
@@ -67,7 +68,7 @@ async def set_api_key():
     base_url = req.get("base_url", "")
     source_factory = req.get("source_fid", factory)
     extra = {"provider": factory}
-    timeout_seconds = int(os.environ.get("LLM_TIMEOUT_SECONDS", 10))
+    timeout_seconds = int(os.environ.get("LLM_TEST_TIMEOUT_SECONDS", 120))
     source_llms = list(LLMService.query(fid=source_factory))
     if not source_llms:
         msg = f"No models configured for {factory} (source: {source_factory})."
@@ -164,7 +165,7 @@ async def add_llm():
     factory = req["llm_factory"]
     api_key = req.get("api_key", "x")
     llm_name = req.get("llm_name")
-    timeout_seconds = int(os.environ.get("LLM_TIMEOUT_SECONDS", 10))
+    timeout_seconds = int(os.environ.get("LLM_TEST_TIMEOUT_SECONDS", 120))
 
     if factory not in [f.name for f in get_allowed_llm_factories()]:
         return get_data_error_result(message=f"LLM factory {factory} is not allowed")
@@ -361,7 +362,22 @@ async def add_llm():
 @validate_request("llm_factory", "llm_name")
 async def delete_llm():
     req = await get_request_json()
-    TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"], TenantLLM.llm_name == req["llm_name"]])
+    llm_name = req["llm_name"]
+    llm_factory = req["llm_factory"]
+    # Check if any knowledge bases reference this model as their embedding model
+    possible_embd_ids = {llm_name, f"{llm_name}@{llm_factory}"}
+    referencing_kbs = [
+        kb for kb in KnowledgebaseService.query(tenant_id=current_user.id, status=StatusEnum.VALID.value)
+        if kb.embd_id in possible_embd_ids
+    ]
+    if referencing_kbs:
+        kb_names = ", ".join(kb.name for kb in referencing_kbs[:3])
+        suffix = f" and {len(referencing_kbs) - 3} more" if len(referencing_kbs) > 3 else ""
+        return get_data_error_result(
+            message=f"Cannot delete model '{llm_name}': it is used as the embedding model by dataset(s): {kb_names}{suffix}. "
+                    f"Please change the embedding model on those datasets first."
+        )
+    TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == llm_factory, TenantLLM.llm_name == llm_name])
     return get_json_result(data=True)
 
 
@@ -381,7 +397,24 @@ async def enable_llm():
 @validate_request("llm_factory")
 async def delete_factory():
     req = await get_request_json()
-    TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == req["llm_factory"]])
+    llm_factory = req["llm_factory"]
+    # Check if any knowledge bases reference models from this factory as their embedding model
+    factory_models = TenantLLMService.query(tenant_id=current_user.id, llm_factory=llm_factory)
+    if factory_models:
+        model_names = {m.llm_name for m in factory_models}
+        possible_embd_ids = model_names | {f"{name}@{llm_factory}" for name in model_names}
+        referencing_kbs = [
+            kb for kb in KnowledgebaseService.query(tenant_id=current_user.id, status=StatusEnum.VALID.value)
+            if kb.embd_id in possible_embd_ids
+        ]
+        if referencing_kbs:
+            kb_names = ", ".join(kb.name for kb in referencing_kbs[:3])
+            suffix = f" and {len(referencing_kbs) - 3} more" if len(referencing_kbs) > 3 else ""
+            return get_data_error_result(
+                message=f"Cannot delete provider '{llm_factory}': its models are used as embedding models by dataset(s): {kb_names}{suffix}. "
+                        f"Please change the embedding model on those datasets first."
+            )
+    TenantLLMService.filter_delete([TenantLLM.tenant_id == current_user.id, TenantLLM.llm_factory == llm_factory])
     return get_json_result(data=True)
 
 

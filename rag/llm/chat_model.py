@@ -77,7 +77,7 @@ class Base(ABC):
         self.toolcall_sessions = {}
 
     def _get_delay(self):
-        return self.base_delay * random.uniform(10, 150)
+        return self.base_delay * random.uniform(1, 3)
 
     def _classify_error(self, error):
         error_str = str(error).lower()
@@ -206,6 +206,8 @@ class Base(ABC):
         return {
             LLMErrorCode.ERROR_RATE_LIMIT,
             LLMErrorCode.ERROR_SERVER,
+            LLMErrorCode.ERROR_TIMEOUT,
+            LLMErrorCode.ERROR_CONNECTION,
         }
 
     def _should_retry(self, error_code: str) -> bool:
@@ -1171,7 +1173,7 @@ class LiteLLMBase(ABC):
             self.api_version = json.loads(key).get("api_version", "2024-02-01")
 
     def _get_delay(self):
-        return self.base_delay * random.uniform(10, 150)
+        return self.base_delay * random.uniform(1, 3)
 
     def _classify_error(self, error):
         error_str = str(error).lower()
@@ -1346,6 +1348,8 @@ class LiteLLMBase(ABC):
         return {
             LLMErrorCode.ERROR_RATE_LIMIT,
             LLMErrorCode.ERROR_SERVER,
+            LLMErrorCode.ERROR_TIMEOUT,
+            LLMErrorCode.ERROR_CONNECTION,
         }
 
     def _should_retry(self, error_code: str) -> bool:

@@ -242,6 +242,18 @@ except Exception:
 }
 
 # -----------------------------------------------------------------------------
+# Ensure .venv is populated (needed when host-mounting an empty .venv folder)
+# -----------------------------------------------------------------------------
+VENV_DIR="${VIRTUAL_ENV:-/ragflow/.venv}"
+if ! "${VENV_DIR}/bin/python3" -c "import sys" 2>/dev/null; then
+    echo ".venv is missing or broken — bootstrapping with uv sync..."
+    rm -rf "${VENV_DIR:?}/bin" "${VENV_DIR:?}/lib" "${VENV_DIR:?}/lib64"
+    uv sync --python 3.12 --frozen
+    "${VENV_DIR}/bin/python3" -m ensurepip --upgrade
+    echo ".venv bootstrapped successfully."
+fi
+
+# -----------------------------------------------------------------------------
 # Start components based on flags
 # -----------------------------------------------------------------------------
 ensure_docling

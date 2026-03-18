@@ -1045,6 +1045,7 @@ def doc_upload_and_parse(conversation_id, file_objs, user_id):
             d["id"] = xxhash.xxh64((ck["content_with_weight"] + str(d["doc_id"])).encode("utf-8")).hexdigest()
             d["create_time"] = str(datetime.now()).replace("T", " ")[:19]
             d["create_timestamp_flt"] = datetime.now().timestamp()
+            d.setdefault("available_int", 1)
             if not d.get("image"):
                 docs.append(d)
                 continue

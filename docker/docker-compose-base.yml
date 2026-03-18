@@ -319,8 +319,8 @@ volumes:
     driver: local
   kibana_data:
     driver: local
-  ragflow_venv:
-    driver: local
+  # ragflow_venv:
+  #   driver: local
 
 networks:
   ragflow:

@@ -180,6 +180,11 @@ class OSConnection(DocStoreConnection):
                     matchExprs[2], FusionExpr)
                 weights = m.fusion_params["weights"]
                 vector_similarity_weight = float(weights.split(",")[1])
+
+        # Build a metadata-only filter for KNN (without text match) so that
+        # vector search is not restricted by BM25 term matching.
+        knn_filter = Q("bool", filter=list(bqry.filter))
+
         knn_query = {}
         for m in matchExprs:
             if isinstance(m, MatchTextExpr):
@@ -206,7 +211,7 @@ class OSConnection(DocStoreConnection):
                 knn_query[vector_column_name] = {}
                 knn_query[vector_column_name]["vector"] = list(m.embedding_data)
                 knn_query[vector_column_name]["k"] = m.topn
-                knn_query[vector_column_name]["filter"] = bqry.to_dict()
+                knn_query[vector_column_name]["filter"] = knn_filter.to_dict()
                 knn_query[vector_column_name]["boost"] = similarity
 
         if bqry and rank_feature:

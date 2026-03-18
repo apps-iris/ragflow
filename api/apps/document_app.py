@@ -33,6 +33,7 @@ from api.db.services.file_service import FileService
 from api.db.services.knowledgebase_service import KnowledgebaseService
 from api.db.services.task_service import TaskService, cancel_all_task_of
 from api.db.services.user_service import UserTenantService
+from api.utils.api_utils import verify_embedding_availability
 from common.misc_utils import get_uuid, thread_pool_exec
 from api.utils.api_utils import (
     get_data_error_result,
@@ -645,10 +646,13 @@ async def run():
                         settings.docStoreConn.delete({"doc_id": id}, search.index_name(tenant_id), doc.kb_id)
 
                 if str(req["run"]) == TaskStatus.RUNNING.value:
+                    e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
+                    if not e:
+                        return get_data_error_result(message="Can't find this dataset!")
+                    ok, err = verify_embedding_availability(kb.embd_id, tenant_id)
+                    if not ok:
+                        return err
                     if req.get("apply_kb"):
-                        e, kb = KnowledgebaseService.get_by_id(doc.kb_id)
-                        if not e:
-                            raise LookupError("Can't find this dataset!")
                         doc.parser_config["llm_id"] = kb.parser_config.get("llm_id")
                         doc.parser_config["enable_metadata"] = kb.parser_config.get("enable_metadata", False)
                         doc.parser_config["metadata"] = kb.parser_config.get("metadata", {})

@@ -89,7 +89,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./service_conf.yaml.template:/ragflow/conf/service_conf.yaml.template
       - ./entrypoint.sh:/ragflow/entrypoint.sh
-      - ragflow_venv:/ragflow/.venv
+      - ./.venv:/ragflow/.venv
     env_file: .env
     networks:
       - ragflow

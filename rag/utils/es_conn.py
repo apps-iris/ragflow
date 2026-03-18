@@ -164,6 +164,13 @@ class ESConnection(ESConnectionBase):
                     match_expressions[2], FusionExpr)
                 weights = m.fusion_params["weights"]
                 vector_similarity_weight = get_float(weights.split(",")[1])
+
+        # Build a metadata-only filter for KNN (without text match) so that
+        # vector search is not restricted by BM25 term matching.  This is
+        # critical for cross-language queries where query terms may not appear
+        # in the document text.
+        knn_filter = Q("bool", filter=list(bool_query.filter))
+
         for m in match_expressions:
             if isinstance(m, MatchTextExpr):
                 minimum_should_match = m.extra_options.get("minimum_should_match", 0.0)
@@ -184,7 +191,7 @@ class ESConnection(ESConnectionBase):
                           m.topn,
                           m.topn * 2,
                           query_vector=list(m.embedding_data),
-                          filter=bool_query.to_dict(),
+                          filter=knn_filter.to_dict(),
                           similarity=similarity,
                           )
 
