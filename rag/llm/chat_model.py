@@ -35,6 +35,8 @@ from rag.llm import FACTORY_DEFAULT_BASE_URL, LITELLM_PROVIDER_PREFIX, Supported
 from rag.nlp import is_chinese, is_english
 
 from common.misc_utils import thread_pool_exec
+
+
 class LLMErrorCode(StrEnum):
     ERROR_RATE_LIMIT = "RATE_LIMIT_EXCEEDED"
     ERROR_AUTHENTICATION = "AUTH_ERROR"
@@ -60,6 +62,63 @@ LENGTH_NOTIFICATION_CN = "······\n由于大模型的上下文窗口大小�
 LENGTH_NOTIFICATION_EN = "...\nThe answer is truncated by your chosen LLM due to its limitation on context length."
 REPETITION_NOTIFICATION_CN = "\n[检测到重复输出，已自动停止生成。]"
 REPETITION_NOTIFICATION_EN = "\n[Repetitive output detected. Generation stopped automatically.]"
+
+def _apply_model_family_policies(
+    model_name: str,
+    *,
+    backend: str,
+    provider: SupportedLiteLLMProvider | str | None = None,
+    gen_conf: dict | None = None,
+    request_kwargs: dict | None = None,
+):
+    model_name_lower = (model_name or "").lower()
+    sanitized_gen_conf = deepcopy(gen_conf) if gen_conf else {}
+    sanitized_kwargs = dict(request_kwargs) if request_kwargs else {}
+
+    # Qwen3 family disables thinking by extra_body on non-stream chat requests.
+    if "qwen3" in model_name_lower and provider != SupportedLiteLLMProvider.Ollama:
+        sanitized_kwargs["extra_body"] = {"enable_thinking": False}
+
+    if backend == "base":
+        # GPT-5 and GPT-5.1 endpoints in this path have inconsistent generation-param support.
+        if "gpt-5" in model_name_lower:
+            sanitized_gen_conf = {}
+        return sanitized_gen_conf, sanitized_kwargs
+
+    if backend == "litellm":
+        if provider in {SupportedLiteLLMProvider.OpenAI, SupportedLiteLLMProvider.Azure_OpenAI} and "gpt-5" in model_name_lower:
+            for key in ("temperature", "top_p", "logprobs", "top_logprobs"):
+                sanitized_gen_conf.pop(key, None)
+                sanitized_kwargs.pop(key, None)
+
+        if provider == SupportedLiteLLMProvider.Ollama:
+            if "repeat_penalty" not in sanitized_gen_conf:
+                sanitized_gen_conf["repeat_penalty"] = 1.15
+            if sanitized_gen_conf.get("temperature", 0) > 0.7:
+                sanitized_gen_conf["temperature"] = 0.7
+
+        elif provider == SupportedLiteLLMProvider.HunYuan:
+            for key in ("presence_penalty", "frequency_penalty"):
+                sanitized_gen_conf.pop(key, None)
+        elif "kimi-k2.5" in model_name_lower:
+            reasoning = sanitized_gen_conf.pop("reasoning", None)
+            thinking = {"type": "enabled"}
+            if reasoning is not None:
+                thinking = {"type": "enabled"} if reasoning else {"type": "disabled"}
+            elif not isinstance(thinking, dict) or thinking.get("type") not in {"enabled", "disabled"}:
+                thinking = {"type": "disabled"}
+
+            sanitized_gen_conf["thinking"] = thinking
+            thinking_enabled = thinking.get("type") == "enabled"
+            sanitized_gen_conf["temperature"] = 1.0 if thinking_enabled else 0.6
+            sanitized_gen_conf["top_p"] = 0.95
+            sanitized_gen_conf["n"] = 1
+            sanitized_gen_conf["presence_penalty"] = 0.0
+            sanitized_gen_conf["frequency_penalty"] = 0.0
+
+        return sanitized_gen_conf, sanitized_kwargs
+
+    return sanitized_gen_conf, sanitized_kwargs
 
 
 class Base(ABC):
@@ -102,9 +161,12 @@ class Base(ABC):
 
     def _clean_conf(self, gen_conf):
         model_name_lower = (self.model_name or "").lower()
-        # gpt-5 and gpt-5.1 endpoints have inconsistent parameter support, clear custom generation params to prevent unexpected issues
+        gen_conf, _ = _apply_model_family_policies(
+            self.model_name,
+            backend="base",
+            gen_conf=gen_conf,
+        )
         if "gpt-5" in model_name_lower:
-            gen_conf = {}
             return gen_conf
 
         if "max_tokens" in gen_conf:
@@ -465,8 +527,11 @@ class Base(ABC):
 
             return final_ans.strip(), tol_token
 
-        if self.model_name.lower().find("qwen3") >= 0:
-            kwargs["extra_body"] = {"enable_thinking": False}
+        _, kwargs = _apply_model_family_policies(
+            self.model_name,
+            backend="base",
+            request_kwargs=kwargs,
+        )
 
         response = await self.async_client.chat.completions.create(model=self.model_name, messages=history, **gen_conf, **kwargs)
 
@@ -1199,34 +1264,13 @@ class LiteLLMBase(ABC):
         return LLMErrorCode.ERROR_GENERIC
 
     def _clean_conf(self, gen_conf):
-        gen_conf = deepcopy(gen_conf) if gen_conf else {}
-
-        if self.provider == SupportedLiteLLMProvider.Ollama:
-            if "repeat_penalty" not in gen_conf:
-                gen_conf["repeat_penalty"] = 1.15
-            if gen_conf.get("temperature", 0) > 0.7:
-                gen_conf["temperature"] = 0.7
-
-        elif self.provider == SupportedLiteLLMProvider.HunYuan:
-            unsupported = ["presence_penalty", "frequency_penalty"]
-            for key in unsupported:
-                gen_conf.pop(key, None)
-
-        elif "kimi-k2.5" in self.model_name.lower():
-            reasoning = gen_conf.pop("reasoning", None) # will never get one here, handle this later
-            thinking = {"type": "enabled"} # enable thinking by default
-            if reasoning is not None:
-                thinking = {"type": "enabled"} if reasoning else {"type": "disabled"}
-            elif not isinstance(thinking, dict) or thinking.get("type") not in {"enabled", "disabled"}:
-                thinking = {"type": "disabled"}
-            gen_conf["thinking"] = thinking
-
-            thinking_enabled = thinking.get("type") == "enabled"
-            gen_conf["temperature"] = 1.0 if thinking_enabled else 0.6
-            gen_conf["top_p"] = 0.95
-            gen_conf["n"] = 1
-            gen_conf["presence_penalty"] = 0.0
-            gen_conf["frequency_penalty"] = 0.0
+        # gen_conf = deepcopy(gen_conf) if gen_conf else {}
+        gen_conf, _ = _apply_model_family_policies(
+                self.model_name,
+                backend="litellm",
+                provider=self.provider,
+                gen_conf=gen_conf,
+            )
 
         return gen_conf
 
@@ -1238,8 +1282,15 @@ class LiteLLMBase(ABC):
 
         logging.info("[HISTORY]" + json.dumps(hist, ensure_ascii=False, indent=2))
         gen_conf = self._clean_conf(gen_conf)
-        if self.model_name.lower().find("qwen3") >= 0 and self.provider != SupportedLiteLLMProvider.Ollama:
-            kwargs["extra_body"] = {"enable_thinking": False}
+        _, kwargs = _apply_model_family_policies(
+            self.model_name,
+            backend="litellm",
+            provider=self.provider,
+            request_kwargs=kwargs,
+        )
+        
+        # if self.model_name.lower().find("qwen3") >= 0 and self.provider != SupportedLiteLLMProvider.Ollama:
+        #     kwargs["extra_body"] = {"enable_thinking": False}
 
         completion_args = self._construct_completion_args(history=hist, stream=False, tools=False, **{**gen_conf, **kwargs})
 
@@ -1661,6 +1712,7 @@ class LiteLLMBase(ABC):
 
         assert False, "Shouldn't be here."
 
+
     def _construct_completion_args(self, history, stream: bool, tools: bool, **kwargs):
         completion_args = {
             "model": self.model_name,
@@ -1768,6 +1820,7 @@ class LiteLLMBase(ABC):
         if extra_headers:
             completion_args["extra_headers"] = extra_headers
         return completion_args
+
 
 class RAGconChat(Base):
     """

@@ -48,6 +48,7 @@ from common.string_utils import remove_redundant_spaces
 from common.misc_utils import thread_pool_exec
 from common.constants import RetCode, LLMType, ParserType, TaskStatus, FileSource
 from common import settings
+from api.utils.image_utils import store_chunk_image
 
 MAXIMUM_OF_UPLOADING_FILES = 256
 
@@ -750,7 +751,12 @@ async def delete(tenant_id, dataset_id):
 
     doc_ids = req.get("ids")
     if not doc_ids:
-        return get_result()
+        if req.get("delete_all") is True:
+            doc_ids = [doc.id for doc in DocumentService.query(kb_id=dataset_id)]
+            if not doc_ids:
+                return get_result()
+        else:
+            return get_result()
 
     doc_list = doc_ids
 
@@ -1191,6 +1197,9 @@ async def add_chunk(tenant_id, dataset_id, document_id):
               items:
                 type: string
               description: Important keywords.
+            image_base64:
+              type: string
+              description: Base64-encoded image to associate with the chunk.
       - in: header
         name: Authorization
         type: string
@@ -1255,6 +1264,12 @@ async def add_chunk(tenant_id, dataset_id, document_id):
         d["tag_kwd"] = req["tag_kwd"]
     if "tag_feas" in req:
         d["tag_feas"] = req["tag_feas"]
+    import base64
+    image_base64 = req.get("image_base64", None)
+    if image_base64:
+        d["img_id"] = "{}-{}".format(dataset_id, chunk_id)
+        d["doc_type_kwd"] = "image"
+
     tenant_embd_id = DocumentService.get_tenant_embd_id(document_id)
     if tenant_embd_id:
         model_config = get_model_config_by_id(tenant_embd_id)
@@ -1266,6 +1281,9 @@ async def add_chunk(tenant_id, dataset_id, document_id):
     v = 0.1 * v[0] + 0.9 * v[1]
     d["q_%d_vec" % len(v)] = v.tolist()
     settings.docStoreConn.insert([d], search.index_name(tenant_id), dataset_id)
+
+    if image_base64:
+        store_chunk_image(dataset_id, chunk_id, base64.b64decode(image_base64))
 
     DocumentService.increment_chunk_num(doc.id, doc.kb_id, c, 1, 0)
     # rename keys
@@ -1279,6 +1297,7 @@ async def add_chunk(tenant_id, dataset_id, document_id):
         "create_timestamp_flt": "create_timestamp",
         "create_time": "create_time",
         "document_keyword": "document",
+        "img_id": "image_id",
     }
     renamed_chunk = {}
     for key, value in d.items():
@@ -1349,7 +1368,17 @@ async def rm_chunk(tenant_id, dataset_id, document_id):
 
     chunk_ids = req.get("chunk_ids")
     if not chunk_ids:
-        return get_result()
+        if req.get("delete_all") is True:
+            doc = docs[0]
+            # Clean up storage assets while index rows still exist for discovery
+            DocumentService.delete_chunk_images(doc, tenant_id)
+            condition = {"doc_id": document_id}
+            chunk_number = settings.docStoreConn.delete(condition, search.index_name(tenant_id), dataset_id)
+            if chunk_number != 0:
+                DocumentService.decrement_chunk_num(document_id, dataset_id, 1, chunk_number, 0)
+            return get_result(message=f"deleted {chunk_number} chunks")
+        else:
+            return get_result()
 
     condition = {"doc_id": document_id}
     unique_chunk_ids, duplicate_messages = check_duplicate_ids(chunk_ids, "chunk")

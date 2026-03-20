@@ -176,6 +176,27 @@ export LD_LIBRARY_PATH="/usr/lib/x86_64-linux-gnu/"
 PY=python3
 
 # -----------------------------------------------------------------------------
+# Select Nginx Configuration based on API_PROXY_SCHEME
+# -----------------------------------------------------------------------------
+NGINX_CONF_DIR="/etc/nginx/conf.d"
+if [ -n "$API_PROXY_SCHEME" ]; then
+    if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
+        mv -f "$NGINX_CONF_DIR/ragflow.conf.hybrid" "$NGINX_CONF_DIR/ragflow.conf"
+        echo "Applied nginx config: ragflow.conf.hybrid"
+    elif [[ "${API_PROXY_SCHEME}" == "go" ]]; then
+        mv -f "$NGINX_CONF_DIR/ragflow.conf.golang" "$NGINX_CONF_DIR/ragflow.conf"
+        echo "Applied nginx config: ragflow.conf.golang (default)"
+    else
+        mv -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
+        echo "Applied nginx config: ragflow.conf.python"
+    fi
+else
+    # Default to python backend
+    mv -f "$NGINX_CONF_DIR/ragflow.conf.python" "$NGINX_CONF_DIR/ragflow.conf"
+    echo "Default: applied nginx config: ragflow.conf.python"
+fi
+
+# -----------------------------------------------------------------------------
 # Function(s)
 # -----------------------------------------------------------------------------
 
@@ -241,6 +262,24 @@ except Exception:
   "$PY" -c "from api.db.db_models import init_database_tables as init_web_db; init_web_db()"
 }
 
+function wait_for_server() {
+    local url="$1"
+    local server_name="$2"
+    local timeout=90
+    local interval=2
+    local start_time=$(date +%s)
+
+    echo "Waiting for $server_name to be ready at $url..."
+    while ! curl -f -s -o /dev/null "$url"; do
+        if [ $(($(date +%s) - start_time)) -gt $timeout ]; then
+            echo "Timeout waiting for $server_name after $timeout seconds"
+            return 1
+        fi
+        sleep $interval
+    done
+    echo "$server_name is ready."
+}
+
 # -----------------------------------------------------------------------------
 # Ensure .venv is populated (needed when host-mounting an empty .venv folder)
 # -----------------------------------------------------------------------------
@@ -252,7 +291,6 @@ if ! "${VENV_DIR}/bin/python3" -c "import sys" 2>/dev/null; then
     "${VENV_DIR}/bin/python3" -m ensurepip --upgrade
     echo ".venv bootstrapped successfully."
 fi
-
 # -----------------------------------------------------------------------------
 # Start components based on flags
 # -----------------------------------------------------------------------------
@@ -266,6 +304,12 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting ragflow_server..."
     while true; do
         "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
+        bin/server_main &
+        if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
+            wait_for_server "http://127.0.0.1:9380/healthz" "ragflow_server"
+            echo "Starting RAGFlow server in hybrid mode..."
+            bin/server_main &
+        fi
         if [[ -f "bin/server_main" ]]; then bin/server_main & fi
         wait;
         sleep 1;
@@ -285,6 +329,11 @@ if [[ "${ENABLE_ADMIN_SERVER}" -eq 1 ]]; then
     echo "Starting admin_server..."
     while true; do
         "$PY" admin/server/admin_server.py &
+        if [[ "${API_PROXY_SCHEME}" == "hybrid" ]]; then
+            wait_for_server "http://127.0.0.1:9381/api/v1/admin/ping" "admin_server"
+            echo "Starting Admin server in hybrid mode..."
+            bin/admin_server &
+        fi
         wait;
         sleep 1;
     done &
