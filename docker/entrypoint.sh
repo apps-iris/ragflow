@@ -266,7 +266,7 @@ if [[ "${ENABLE_WEBSERVER}" -eq 1 ]]; then
     echo "Starting ragflow_server..."
     while true; do
         "$PY" api/ragflow_server.py ${INIT_SUPERUSER_ARGS} &
-        bin/server_main &
+        if [[ -f "bin/server_main" ]]; then bin/server_main & fi
         wait;
         sleep 1;
     done &

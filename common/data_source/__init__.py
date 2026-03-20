@@ -36,7 +36,10 @@ from .sharepoint_connector import SharePointConnector
 from .teams_connector import TeamsConnector
 from .moodle_connector import MoodleConnector
 from .airtable_connector import AirtableConnector
-from .dingtalk_ai_table_connector import DingTalkAITableConnector
+try:
+    from .dingtalk_ai_table_connector import DingTalkAITableConnector
+except ImportError:
+    DingTalkAITableConnector = None
 from .asana_connector import AsanaConnector
 from .imap_connector import ImapConnector
 from .zendesk_connector import ZendeskConnector

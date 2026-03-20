@@ -1156,6 +1156,8 @@ class LiteLLMBase(ABC):
         self.model_name = f"{self.prefix}{model_name}"
         self.api_key = key
         self.base_url = (base_url or FACTORY_DEFAULT_BASE_URL.get(self.provider, "")).rstrip("/")
+        if self.provider == SupportedLiteLLMProvider.Ollama and self.base_url and not self.base_url.endswith("/v1"):
+            self.base_url = self.base_url + "/v1"
         # Configure retry parameters
         self.max_retries = kwargs.get("max_retries", int(os.environ.get("LLM_MAX_RETRIES", 5)))
         self.base_delay = kwargs.get("retry_interval", float(os.environ.get("LLM_BASE_DELAY", 2.0)))
@@ -1199,7 +1201,13 @@ class LiteLLMBase(ABC):
     def _clean_conf(self, gen_conf):
         gen_conf = deepcopy(gen_conf) if gen_conf else {}
 
-        if self.provider == SupportedLiteLLMProvider.HunYuan:
+        if self.provider == SupportedLiteLLMProvider.Ollama:
+            if "repeat_penalty" not in gen_conf:
+                gen_conf["repeat_penalty"] = 1.15
+            if gen_conf.get("temperature", 0) > 0.7:
+                gen_conf["temperature"] = 0.7
+
+        elif self.provider == SupportedLiteLLMProvider.HunYuan:
             unsupported = ["presence_penalty", "frequency_penalty"]
             for key in unsupported:
                 gen_conf.pop(key, None)
@@ -1229,7 +1237,8 @@ class LiteLLMBase(ABC):
                 hist.insert(0, {"role": "system", "content": system})
 
         logging.info("[HISTORY]" + json.dumps(hist, ensure_ascii=False, indent=2))
-        if self.model_name.lower().find("qwen3") >= 0:
+        gen_conf = self._clean_conf(gen_conf)
+        if self.model_name.lower().find("qwen3") >= 0 and self.provider != SupportedLiteLLMProvider.Ollama:
             kwargs["extra_body"] = {"enable_thinking": False}
 
         completion_args = self._construct_completion_args(history=hist, stream=False, tools=False, **{**gen_conf, **kwargs})
@@ -1245,6 +1254,11 @@ class LiteLLMBase(ABC):
                 if any([not response.choices, not response.choices[0].message, not response.choices[0].message.content]):
                     return "", 0
                 ans = response.choices[0].message.content.strip()
+                # Ollama embeds thinking output as <think>...</think> in the
+                # content itself (rather than a dedicated reasoning_content
+                # field).  Strip it so the caller only receives the real answer.
+                if self.provider == SupportedLiteLLMProvider.Ollama:
+                    ans = re.sub(r"<think>[\s\S]*?</think>\s*", "", ans).strip()
                 if response.choices[0].finish_reason == "length":
                     ans = self._length_stop(ans)
 
@@ -1257,8 +1271,10 @@ class LiteLLMBase(ABC):
         assert False, "Shouldn't be here."
 
     @staticmethod
-    def _is_repetitive(text, check_sizes=(48, 96, 192)):
+    def _is_repetitive(text, check_sizes=(48, 96, 192), min_length=512):
         """Detect if the tail of accumulated text contains a repeating pattern."""
+        if len(text) < min_length:
+            return False
         for size in check_sizes:
             if len(text) >= size * 3:
                 chunk = text[-size:]
@@ -1278,6 +1294,11 @@ class LiteLLMBase(ABC):
         stop = kwargs.get("stop")
         if stop:
             completion_args["stop"] = stop
+
+        # Ollama streams thinking content as <think>…</think> inside
+        # delta.content (not in a dedicated reasoning_content field).
+        # Track whether we are inside a think block so we can suppress it.
+        ollama_in_think = False
 
         for attempt in range(self.max_retries + 1):
             try:
@@ -1306,6 +1327,30 @@ class LiteLLMBase(ABC):
                     else:
                         reasoning_start = False
                         ans = delta.content
+
+                    # --- Ollama think-block filtering ---
+                    if self.provider == SupportedLiteLLMProvider.Ollama:
+                        filtered = ""
+                        i = 0
+                        while i < len(ans):
+                            if not ollama_in_think:
+                                tag_pos = ans.find("<think>", i)
+                                if tag_pos == -1:
+                                    filtered += ans[i:]
+                                    break
+                                filtered += ans[i:tag_pos]
+                                ollama_in_think = True
+                                i = tag_pos + len("<think>")
+                            else:
+                                end_pos = ans.find("</think>", i)
+                                if end_pos == -1:
+                                    break  # still inside think block
+                                ollama_in_think = False
+                                i = end_pos + len("</think>")
+                        ans = filtered
+                        if not ans:
+                            continue
+                    # --- end Ollama think-block filtering ---
 
                     accumulated += ans
                     if self._is_repetitive(accumulated):
@@ -1477,6 +1522,7 @@ class LiteLLMBase(ABC):
 
         total_tokens = 0
         hist = deepcopy(history)
+        ollama_in_think = False
 
         for attempt in range(self.max_retries + 1):
             history = deepcopy(hist)
@@ -1525,8 +1571,33 @@ class LiteLLMBase(ABC):
                             yield ans
                         else:
                             reasoning_start = False
-                            answer += delta.content
-                            yield delta.content
+                            chunk = delta.content
+
+                            # --- Ollama think-block filtering ---
+                            if self.provider == SupportedLiteLLMProvider.Ollama:
+                                filtered = ""
+                                ci = 0
+                                while ci < len(chunk):
+                                    if not ollama_in_think:
+                                        tp = chunk.find("<think>", ci)
+                                        if tp == -1:
+                                            filtered += chunk[ci:]
+                                            break
+                                        filtered += chunk[ci:tp]
+                                        ollama_in_think = True
+                                        ci = tp + len("<think>")
+                                    else:
+                                        ep = chunk.find("</think>", ci)
+                                        if ep == -1:
+                                            break
+                                        ollama_in_think = False
+                                        ci = ep + len("</think>")
+                                chunk = filtered
+                            # --- end Ollama think-block filtering ---
+
+                            answer += chunk
+                            if chunk:
+                                yield chunk
 
                         tol = total_token_count_from_response(resp)
                         if not tol:
@@ -1611,6 +1682,15 @@ class LiteLLMBase(ABC):
                     "tool_choice": "auto",
                 }
             )
+        if self.provider == SupportedLiteLLMProvider.Ollama:
+            ollama_extra_params = ["repeat_penalty", "num_predict", "num_ctx", "top_k", "mirostat", "mirostat_eta", "mirostat_tau"]
+            extra_body = completion_args.pop("extra_body", {}) or {}
+            for param in ollama_extra_params:
+                if param in completion_args:
+                    extra_body[param] = completion_args.pop(param)
+            if extra_body:
+                completion_args["extra_body"] = extra_body
+
         if self.provider in FACTORY_DEFAULT_BASE_URL:
             completion_args.update({"api_base": self.base_url})
         elif self.provider == SupportedLiteLLMProvider.Bedrock:

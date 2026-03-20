@@ -104,7 +104,7 @@ LITELLM_PROVIDER_PREFIX = {
     SupportedLiteLLMProvider.Nvidia: "nvidia_nim/",
     SupportedLiteLLMProvider.TogetherAI: "together_ai/",
     SupportedLiteLLMProvider.Anthropic: "",  # don't need a prefix
-    SupportedLiteLLMProvider.Ollama: "ollama_chat/",
+    SupportedLiteLLMProvider.Ollama: "openai/",
     SupportedLiteLLMProvider.LongCat: "openai/",
     SupportedLiteLLMProvider.CometAPI: "openai/",
     SupportedLiteLLMProvider.SILICONFLOW: "openai/",
