@@ -13,14 +13,19 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import logging
 from api.db.services.tenant_llm_service import TenantLLMService
 
 def ensure_tenant_model_id_for_params(tenant_id: str, param_dict: dict) -> dict:
     for key in ["llm_id", "embd_id", "asr_id", "img2txt_id", "rerank_id", "tts_id"]:
-        if param_dict.get(key) and not param_dict.get(f"tenant_{key}"):
+        if param_dict.get(key):
+            # Always re-resolve tenant_<key> when <key> is explicitly provided,
+            # so that changing the model name actually takes effect.
             tenant_model = TenantLLMService.get_api_key(tenant_id, param_dict[key])
             if tenant_model:
+                logging.info("[tenant_utils] Resolved %s=%s -> tenant_%s=%s", key, param_dict[key], key, tenant_model.id)
                 param_dict.update({f"tenant_{key}": tenant_model.id})
             else:
+                logging.warning("[tenant_utils] No tenant model found for %s=%s", key, param_dict[key])
                 param_dict.update({f"tenant_{key}": 0})
     return param_dict

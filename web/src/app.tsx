@@ -76,7 +76,7 @@ if (process.env.NODE_ENV === 'development') {
   );
 }
 
-const queryClient = new QueryClient({
+export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,

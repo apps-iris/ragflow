@@ -1364,7 +1364,14 @@ class LiteLLMBase(ABC):
                     if not hasattr(resp, "choices") or not resp.choices:
                         continue
 
-                    delta = resp.choices[0].delta
+                    choice = resp.choices[0]
+                    delta = getattr(choice, "delta", None)
+                    if delta is None:
+                        # Ollama sometimes returns non-streaming Choices in streaming context
+                        msg = getattr(choice, "message", None)
+                        if msg and getattr(msg, "content", None):
+                            yield msg.content
+                        continue
                     if not hasattr(delta, "content") or delta.content is None:
                         delta.content = ""
 

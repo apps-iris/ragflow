@@ -6,6 +6,7 @@ import userService, {
 } from '@/services/user-service';
 import authorizationUtil, { redirectToLogin } from '@/utils/authorization-util';
 import { useMutation, useQuery } from '@tanstack/react-query';
+import { queryClient } from '@/app';
 import { useTranslation } from 'react-i18next';
 
 export interface ILoginRequestBody {
@@ -123,6 +124,7 @@ export const useLogout = () => {
       if (data.code === 0) {
         message.success(t('message.logout'));
         authorizationUtil.removeAll();
+        queryClient.clear();
         redirectToLogin();
       }
       return data.code;

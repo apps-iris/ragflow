@@ -9,9 +9,11 @@ import {
   useSetDocumentStatus,
 } from '@/hooks/use-document-request';
 import { IDocumentInfo } from '@/interfaces/database/document';
+import { downloadDocument } from '@/utils/file-util';
 import {
   LucideCircleX,
   LucideCylinder,
+  LucideDownload,
   LucidePlayCircle,
   LucideToggleLeft,
   LucideToggleRight,
@@ -98,6 +100,15 @@ export function useBulkOperateDataset({
     onChangeStatus(false);
   }, [onChangeStatus]);
 
+  const handleDownload = useCallback(async () => {
+    const selectedDocs = documents.filter((d) =>
+      selectedRowKeys.includes(d.id),
+    );
+    for (const doc of selectedDocs) {
+      await downloadDocument({ id: doc.id, filename: doc.name });
+    }
+  }, [documents, selectedRowKeys]);
+
   const handleDelete = useCallback(() => {
     const deletedKeys = selectedRowKeys.filter(
       (x) =>
@@ -114,6 +125,12 @@ export function useBulkOperateDataset({
   }, [selectedRowKeys, removeDocument, documents, t]);
 
   const list = [
+    {
+      id: 'download',
+      label: t('common.download'),
+      icon: <LucideDownload />,
+      onClick: handleDownload,
+    },
     {
       id: 'enabled',
       label: t('knowledgeDetails.enabled'),
