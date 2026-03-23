@@ -152,6 +152,14 @@ const MessageItem = ({
                 className="mb-2"
               />
             )}
+            {/* Typing indicator when loading with no content yet */}
+            {isAssistant && loading && !messageContent && !pdfDownloadInfo && (
+              <div className="flex items-center gap-1.5 py-2 px-1">
+                <span className="size-2 rounded-full bg-foreground opacity-50 animate-bounce [animation-delay:-0.3s]" />
+                <span className="size-2 rounded-full bg-foreground opacity-50 animate-bounce [animation-delay:-0.15s]" />
+                <span className="size-2 rounded-full bg-foreground opacity-50 animate-bounce" />
+              </div>
+            )}
             {/* Show message content if there's any text besides the download */}
             {messageContent && (
               <div
