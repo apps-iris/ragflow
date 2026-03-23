@@ -143,17 +143,6 @@ function MessageItem({
       return null;
     }
 
-    if (isAssistant && sendLoading && isEmpty(messageContent) && !item.data) {
-      if (isShare) return null;
-      return (
-        <div className="flex items-center gap-1.5 py-2 px-1">
-          <span className="size-2 rounded-full bg-foreground opacity-50 animate-bounce [animation-delay:-0.3s]" />
-          <span className="size-2 rounded-full bg-foreground opacity-50 animate-bounce [animation-delay:-0.15s]" />
-          <span className="size-2 rounded-full bg-foreground opacity-50 animate-bounce" />
-        </div>
-      );
-    }
-
     return (
       <div
         className={cn({
