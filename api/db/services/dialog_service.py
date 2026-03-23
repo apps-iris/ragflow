@@ -460,6 +460,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         return
 
     chat_start_ts = timer()
+    _q_preview = messages[-1].get("content", "")[:120].replace("\n", " ")
+    logging.info("[CHAT:START] dialog=%s llm=%s question=%r", dialog.name, dialog.llm_id, _q_preview)
     llm_type = TenantLLMService.llm_id2llm_type(dialog.llm_id)
     if llm_type == "image2text":
         llm_model_config = TenantLLMService.get_model_config(dialog.tenant_id, LLMType.IMAGE2TEXT, dialog.llm_id)
@@ -514,7 +516,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
     logging.debug(f"field_map retrieved: {field_map}")
     # try to use sql if field mapping is good to go
     if field_map:
-        logging.debug("Use SQL to retrieval:{}".format(questions[-1]))
+        logging.info("[CHAT:SQL] Trying SQL retrieval for: %r", questions[-1][:80])
         ans = await use_sql(questions[-1], field_map, dialog.tenant_id, chat_mdl, prompt_config.get("quote", True), dialog.kb_ids)
         # For aggregate queries (COUNT, SUM, etc.), chunks may be empty but answer is still valid
         if ans and (ans.get("reference", {}).get("chunks") or ans.get("answer")):
@@ -535,7 +537,9 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
             prompt_config["system"] = prompt_config["system"].replace("{%s}" % p["key"], " ")
 
     if len(questions) > 1 and prompt_config.get("refine_multiturn"):
+        logging.info("[CHAT:REFINE] Refining multi-turn question via LLM...")
         questions = [await full_question(dialog.tenant_id, dialog.llm_id, messages)]
+        logging.info("[CHAT:REFINE] Refined question: %r", questions[0][:80])
     else:
         questions = questions[-1:]
 
@@ -602,6 +606,7 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
 
         else:
             if embd_mdl:
+                logging.info("[CHAT:RETRIEVAL] Starting vector retrieval for: %r", " ".join(questions)[:80])
                 kbinfos = await retriever.retrieval(
                     " ".join(questions),
                     embd_mdl,
@@ -635,6 +640,8 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
                     kbinfos["chunks"].insert(0, ck)
 
     knowledges = kb_prompt(kbinfos, max_tokens)
+    logging.info("[CHAT:RETRIEVAL] Done — %d chunks, %d knowledges in %.1fs",
+                 len(kbinfos.get("chunks", [])), len(knowledges), timer() - chat_start_ts)
     logging.debug("{}->{}".format(" ".join(questions), "\n->".join(knowledges)))
 
     retrieval_ts = timer()
@@ -705,6 +712,12 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         if answer.lower().find("invalid key") >= 0 or answer.lower().find("invalid api") >= 0:
             answer += " Please set LLM API-Key in 'User Setting -> Model providers -> API-Key'"
         finish_chat_ts = timer()
+        logging.info("[CHAT:DONE] dialog=%s total=%.1fs retrieval=%.1fs llm=%.1fs tokens≈%d",
+                     dialog.name,
+                     finish_chat_ts - chat_start_ts,
+                     retrieval_ts - refine_question_ts,
+                     finish_chat_ts - retrieval_ts,
+                     num_tokens_from_string(think + answer))
 
         total_time_cost = (finish_chat_ts - chat_start_ts) * 1000
         check_llm_time_cost = (check_llm_ts - chat_start_ts) * 1000
@@ -747,12 +760,18 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         )
 
     if stream:
+        logging.info("[CHAT:LLM] Calling LLM %s (stream), prompt_tokens≈%d, elapsed=%.1fs",
+                     dialog.llm_id, used_token_count, timer() - chat_start_ts)
         if llm_type == "chat":
             stream_iter = chat_mdl.async_chat_streamly_delta(prompt + prompt4citation, msg[1:], gen_conf)
         else:
             stream_iter = chat_mdl.async_chat_streamly_delta(prompt + prompt4citation, msg[1:], gen_conf, images=image_files)
         last_state = None
+        _first_token = True
         async for kind, value, state in _stream_with_think_delta(stream_iter):
+            if _first_token:
+                logging.info("[CHAT:LLM] First token received in %.1fs", timer() - chat_start_ts)
+                _first_token = False
             last_state = state
             if kind == "marker":
                 flags = {"start_to_think": True} if value == "<think>" else {"end_to_think": True}

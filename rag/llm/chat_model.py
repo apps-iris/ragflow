@@ -1351,6 +1351,13 @@ class LiteLLMBase(ABC):
         # Track whether we are inside a think block so we can suppress it.
         ollama_in_think = False
 
+        # Disable thinking for qwen3 text models on Ollama: while thinking the model
+        # yields no visible tokens, making the request appear hung for the client.
+        # Vision models (qwen3-vl) do NOT support the think parameter — applying it causes hangs.
+        _mn = self.model_name.lower()
+        if self.provider == SupportedLiteLLMProvider.Ollama and "qwen3" in _mn and "vl" not in _mn:
+            completion_args["extra_body"] = {"think": False}
+
         for attempt in range(self.max_retries + 1):
             try:
                 stream = await litellm.acompletion(
