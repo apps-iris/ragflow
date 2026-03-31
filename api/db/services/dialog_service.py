@@ -265,6 +265,18 @@ def get_models(dialog):
 
     if dialog.tenant_llm_id:
         chat_model_config = get_model_config_by_id(dialog.tenant_llm_id)
+        # Guard against stale tenant_llm_id: if llm_id is explicitly set and
+        # the resolved model doesn't match it, prefer llm_id.  This happens
+        # when the user changes the chat model in the UI but the old
+        # tenant_llm_id persists in the DB pointing to a different model.
+        if dialog.llm_id:
+            expected_name, _ = TenantLLMService.split_model_name_and_factory(dialog.llm_id)
+            if chat_model_config.get("llm_name") != expected_name:
+                logging.warning(
+                    "[CHAT] tenant_llm_id=%s resolves to '%s' but llm_id is '%s' — using llm_id",
+                    dialog.tenant_llm_id, chat_model_config.get("llm_name"), dialog.llm_id,
+                )
+                chat_model_config = get_model_config_by_type_and_name(dialog.tenant_id, LLMType.CHAT, dialog.llm_id)
     elif dialog.llm_id:
         chat_model_config = get_model_config_by_type_and_name(dialog.tenant_id, LLMType.CHAT, dialog.llm_id)
     else:
@@ -761,8 +773,9 @@ async def async_chat(dialog, messages, stream=True, **kwargs):
         )
 
     if stream:
+        _actual_model = f"{chat_mdl.llm_name}@{chat_mdl.model_config['llm_factory']}"
         logging.info("[CHAT:LLM] Calling LLM %s (stream), prompt_tokens≈%d, elapsed=%.1fs",
-                     dialog.llm_id, used_token_count, timer() - chat_start_ts)
+                     _actual_model, used_token_count, timer() - chat_start_ts)
         if llm_type == "chat":
             stream_iter = chat_mdl.async_chat_streamly_delta(prompt + prompt4citation, msg[1:], gen_conf)
         else:

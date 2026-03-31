@@ -1609,18 +1609,6 @@
                     "model_type": "chat"
                 },
                 {
-                    "llm_name": "llama3-70b-8192",
-                    "tags": "LLM,CHAT,6k",
-                    "max_tokens": 8192,
-                    "model_type": "chat"
-                },
-                {
-                    "llm_name": "llama3-8b-8192",
-                    "tags": "LLM,CHAT,30k",
-                    "max_tokens": 8192,
-                    "model_type": "chat"
-                },
-                {
                     "llm_name": "llama-3.1-70b-versatile",
                     "tags": "LLM,CHAT,128k",
                     "max_tokens": 131072,
@@ -1652,7 +1640,15 @@
                     "tags": "LLM,CHAT,5k",
                     "max_tokens": 32768,
                     "model_type": "chat"
-                }
+                },
+
+                {
+                    "llm_name": "qwen/qwen3-32b",
+                    "tags": "LLM,CHAT,128k",
+                    "max_tokens": 131072,
+                    "model_type": "chat",
+                    "is_tools": true
+                }                
             ]
         },
         {

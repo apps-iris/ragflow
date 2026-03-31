@@ -119,9 +119,11 @@ export function addTenantParams(data: any, url?: string): any {
       try {
         const { modelName, factoryId } = parseModelUuid(newData[paramName]);
         const tenantModelId = getTenantModelId(llmList, modelName, factoryId);
-        if (tenantModelId) {
-          newData[tenantParamName] = tenantModelId;
-        }
+        // Always update tenant_llm_id — even when null — to clear any stale
+        // reference left over from a previous model selection. If we skip the
+        // update when the model isn't found, the old ID persists and the
+        // backend resolves the wrong (e.g. Ollama) model instead of llm_id.
+        newData[tenantParamName] = tenantModelId || null;
       } catch (error) {
         console.error(`Error processing ${paramName}:`, error);
       }

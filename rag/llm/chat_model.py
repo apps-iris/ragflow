@@ -76,7 +76,10 @@ def _apply_model_family_policies(
     sanitized_kwargs = dict(request_kwargs) if request_kwargs else {}
 
     # Qwen3 family disables thinking by extra_body on non-stream chat requests.
-    if "qwen3" in model_name_lower and provider != SupportedLiteLLMProvider.Ollama:
+    if "qwen3" in model_name_lower and provider in {
+        SupportedLiteLLMProvider.Tongyi_Qianwen,
+        SupportedLiteLLMProvider.Dashscope,
+    }:
         sanitized_kwargs["extra_body"] = {"enable_thinking": False}
 
     if backend == "base":
