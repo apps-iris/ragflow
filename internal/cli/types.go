@@ -26,6 +26,7 @@ type Command struct {
 const (
 	// Keywords
 	TokenLogin = iota
+	TokenLogout
 	TokenRegister
 	TokenList
 	TokenServices
@@ -68,6 +69,7 @@ const (
 	TokenKey
 	TokenKeys
 	TokenGenerate
+	TokenPool
 	TokenModel
 	TokenModels
 	TokenProvider
@@ -95,6 +97,12 @@ const (
 	TokenSync
 	TokenBenchmark
 	TokenPing
+	TokenToken
+	TokenTokens
+	TokenUnset
+	TokenIndex
+	TokenVectorSize
+	TokenDocMeta
 
 	// Literals
 	TokenIdentifier
